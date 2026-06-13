@@ -7,7 +7,7 @@ import { scannerService } from "./scanner.service";
 export const scannerRoutes = Router();
 
 const scannerRequestSchema = z.object({
-  workspaceId: z.string().min(8).max(80).optional()
+  workspaceId: z.string().trim().min(4).max(80).optional()
 });
 
 function assertScannerAccess(req: import("express").Request) {
@@ -22,7 +22,7 @@ scannerRoutes.post("/run", async (req, res, next) => {
   try {
     assertScannerAccess(req);
     const body = scannerRequestSchema.parse(req.body ?? {});
-    const workspaceId = body.workspaceId || req.header("X-Workspace-Id") || req.header("x-workspace-id") || undefined;
+    const workspaceId = body.workspaceId || (req.header("X-Workspace-Id") || req.header("x-workspace-id") || "").trim() || undefined;
     const summary = await scannerService.run({ workspaceId });
     res.json(summary);
   } catch (error) {

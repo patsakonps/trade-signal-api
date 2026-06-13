@@ -6,14 +6,14 @@ type WorkspaceRequest = Request & {
   workspaceId?: string;
 };
 
-const workspaceIdPattern = /^[a-zA-Z0-9_-]{8,80}$/;
+const workspaceIdPattern = /^[a-zA-Z0-9_-]{4,80}$/;
 
 export async function workspaceMiddleware(
   req: WorkspaceRequest,
   _res: Response,
   next: NextFunction
 ) {
-  const headerValue = req.header("X-Workspace-Id") || req.header("x-workspace-id");
+  const headerValue = (req.header("X-Workspace-Id") || req.header("x-workspace-id") || "").trim();
 
   if (!headerValue || !workspaceIdPattern.test(headerValue)) {
     return next(new AppError(400, "Missing or invalid X-Workspace-Id header"));

@@ -6,7 +6,7 @@ import { AppError } from "../../middleware/error.middleware";
 export const workspaceRoutes = Router();
 
 const createWorkspaceSchema = z.object({
-  id: z.string().min(8).max(80).regex(/^[a-zA-Z0-9_-]+$/)
+  id: z.string().trim().min(4).max(80).regex(/^[a-zA-Z0-9_-]+$/)
 });
 
 workspaceRoutes.post("/", async (req, res, next) => {

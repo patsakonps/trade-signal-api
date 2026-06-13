@@ -95,8 +95,7 @@ export class ScannerService {
               workspace: {
                 telegramNotification: {
                   is: {
-                    enabled: true,
-                    chatId: { not: null }
+                    enabled: true
                   }
                 }
               }
