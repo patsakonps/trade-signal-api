@@ -1,25 +1,26 @@
-FROM node:20-alpine AS build
+FROM node:22.22.3-bookworm-slim AS base
+
 WORKDIR /app
 
-COPY package*.json ./
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
+COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
-RUN npm install
-RUN npx prisma generate
+
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
-RUN npm prune --omit=dev
 
-FROM node:20-alpine AS runtime
-WORKDIR /app
+RUN pnpm exec prisma generate
+RUN pnpm build
+
 ENV NODE_ENV=production
-ENV PORT=8080
-
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY package*.json ./
 
 EXPOSE 8080
-CMD ["node", "dist/server.js"]
+
+CMD ["pnpm", "start"]
