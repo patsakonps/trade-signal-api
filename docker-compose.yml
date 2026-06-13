@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trade-signal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trade_signal
+      POSTGRES_PASSWORD: trade_signal
+      POSTGRES_DB: trade_signal
+    ports:
+      - "5432:5432"
+    volumes:
+      - trade_signal_pg:/var/lib/postgresql/data
+
+volumes:
+  trade_signal_pg:

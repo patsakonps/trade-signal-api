@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IndicatorTemplateType {
+  CUSTOM_SCRIPT
+}
+
+enum RuleIndicatorType {
+  BUILT_IN
+  CUSTOM_SCRIPT
+}
+
+model Workspace {
+  id          String              @id
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  watchlist   WatchlistItem[]
+  indicators  IndicatorTemplate[]
+  rules       SignalRule[]
+  signals     Signal[]
+  trades      Trade[]
+  holdings    Holding[]
+  importJobs  ImportJob[]
+}
+
+model WatchlistItem {
+  id          String      @id @default(cuid())
+  workspaceId String
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  exchange    String      @default("BINANCE")
+  symbol      String
+  timeframe   String
+  createdAt   DateTime    @default(now())
+
+  @@unique([workspaceId, exchange, symbol, timeframe])
+  @@index([workspaceId])
+}
+
+model IndicatorTemplate {
+  id                  String                @id @default(cuid())
+  workspaceId          String
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                 String
+  key                  String
+  type                 IndicatorTemplateType @default(CUSTOM_SCRIPT)
+  script               String                @db.Text
+  paramsJson           Json                  @default("{}")
+  outputSchemaVersion  Int                   @default(1)
+  enabled              Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  rules                SignalRule[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId])
+}
+
+model SignalRule {
+  id                   String             @id @default(cuid())
+  workspaceId           String
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                  String
+  exchange              String             @default("BINANCE")
+  symbol                String
+  timeframe             String
+  indicatorType         RuleIndicatorType   @default(BUILT_IN)
+  indicatorKey          String
+  indicatorTemplateId   String?
+  indicatorTemplate     IndicatorTemplate?  @relation(fields: [indicatorTemplateId], references: [id], onDelete: SetNull)
+  condition             String             @default("BUY_OR_SELL")
+  enabled               Boolean            @default(true)
+  paramsJson            Json               @default("{}")
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  signals               Signal[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, symbol, timeframe])
+}
+
+model Signal {
+  id              String      @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  signalRuleId     String?
+  signalRule       SignalRule? @relation(fields: [signalRuleId], references: [id], onDelete: SetNull)
+  exchange         String      @default("BINANCE")
+  symbol           String
+  timeframe        String
+  indicatorKey     String
+  signalType       String
+  zone             String?
+  price            Decimal     @db.Decimal(30, 12)
+  candleCloseTime  DateTime
+  payloadJson      Json        @default("{}")
+  createdAt        DateTime    @default(now())
+
+  @@index([workspaceId])
+  @@index([workspaceId, symbol, timeframe])
+}
+
+model Trade {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  exchange    String
+  symbol      String
+  side        String
+  price       Decimal   @db.Decimal(30, 12)
+  quantity    Decimal   @db.Decimal(30, 12)
+  fee         Decimal?  @db.Decimal(30, 12)
+  feeAsset    String?
+  tradedAt    DateTime
+  source      String    @default("MANUAL")
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+}
+
+model Holding {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  asset        String
+  quantity     Decimal   @db.Decimal(30, 12)
+  avgCost      Decimal   @db.Decimal(30, 12)
+  realizedPnl  Decimal   @default(0) @db.Decimal(30, 12)
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([workspaceId, asset])
+  @@index([workspaceId])
+}
+
+model ImportJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  source      String
+  fileName    String
+  status      String    @default("COMPLETED")
+  summaryJson Json      @default("{}")
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+}
