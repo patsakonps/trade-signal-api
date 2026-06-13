@@ -11,6 +11,8 @@ import { watchlistRoutes } from "./modules/watchlist/watchlist.routes";
 import { signalRuleRoutes } from "./modules/signal-rules/signal-rule.routes";
 import { portfolioRoutes } from "./modules/portfolio/portfolio.routes";
 import { importRoutes } from "./modules/import/import.routes";
+import { notificationRoutes } from "./modules/notifications/notification.routes";
+import { scannerRoutes } from "./modules/scanner/scanner.routes";
 
 export const app = express();
 
@@ -35,6 +37,8 @@ app.use("/api/watchlist", workspaceMiddleware, watchlistRoutes);
 app.use("/api/signal-rules", workspaceMiddleware, signalRuleRoutes);
 app.use("/api/portfolio", workspaceMiddleware, portfolioRoutes);
 app.use("/api/import", workspaceMiddleware, importRoutes);
+app.use("/api/notifications", workspaceMiddleware, notificationRoutes);
+app.use("/api/scanner", scannerRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

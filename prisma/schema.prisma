@@ -17,17 +17,18 @@ enum RuleIndicatorType {
 }
 
 model Workspace {
-  id          String              @id
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id                   String                       @id
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
-  watchlist   WatchlistItem[]
-  indicators  IndicatorTemplate[]
-  rules       SignalRule[]
-  signals     Signal[]
-  trades      Trade[]
-  holdings    Holding[]
-  importJobs  ImportJob[]
+  watchlist            WatchlistItem[]
+  indicators           IndicatorTemplate[]
+  rules                SignalRule[]
+  signals              Signal[]
+  trades               Trade[]
+  holdings             Holding[]
+  importJobs           ImportJob[]
+  telegramNotification TelegramNotificationSetting?
 }
 
 model WatchlistItem {
@@ -104,8 +105,21 @@ model Signal {
   payloadJson      Json        @default("{}")
   createdAt        DateTime    @default(now())
 
+  @@unique([workspaceId, signalRuleId, signalType, candleCloseTime])
   @@index([workspaceId])
   @@index([workspaceId, symbol, timeframe])
+}
+
+model TelegramNotificationSetting {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chatId      String?
+  enabled     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
 }
 
 model Trade {

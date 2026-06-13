@@ -9,7 +9,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   BINANCE_BASE_URL: z.string().url().default("https://api.binance.com"),
-  MARKET_CACHE_TTL_MS: z.coerce.number().default(30_000)
+  MARKET_CACHE_TTL_MS: z.coerce.number().default(30_000),
+  TELEGRAM_BOT_TOKEN: z.string().default(""),
+  TELEGRAM_CHAT_ID: z.string().default(""),
+  SCANNER_SECRET: z.string().default("")
 });
 
 export const env = envSchema.parse(process.env);

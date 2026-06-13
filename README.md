@@ -11,7 +11,7 @@ API สำหรับ Trade Signal Noti MVP
 
 ## Tech Stack
 
-- Node.js 20
+- Node.js 22.22.3 + pnpm 9.15.9
 - Express + TypeScript
 - Prisma + PostgreSQL
 - Docker สำหรับ Cloud Run
@@ -28,21 +28,21 @@ docker compose up -d
 ### 2) Install dependencies
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
 ```
 
 ### 3) Run database migration
 
 ```bash
-npx prisma generate
-npx prisma migrate dev
+pnpm exec prisma generate
+pnpm exec prisma migrate dev
 ```
 
 ### 4) Run API
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Test:
@@ -67,6 +67,8 @@ DATABASE_URL=postgresql://trade_signal:trade_signal@localhost:5432/trade_signal?
 CORS_ORIGIN=http://localhost:5173
 BINANCE_BASE_URL=https://api.binance.com
 MARKET_CACHE_TTL_MS=30000
+TELEGRAM_BOT_TOKEN=
+SCANNER_SECRET=
 ```
 
 ## CDC Action Zone Default Formula
@@ -141,6 +143,8 @@ PORT=8080
 CORS_ORIGIN=https://YOUR_WEB_SERVICE_URL
 BINANCE_BASE_URL=https://api.binance.com
 MARKET_CACHE_TTL_MS=30000
+TELEGRAM_BOT_TOKEN=
+SCANNER_SECRET=
 ```
 
 ตั้ง secret mapping:
@@ -193,3 +197,103 @@ DELETE /api/signal-rules/:id
 GET /api/portfolio/holdings
 POST /api/import/binance-th
 ```
+
+## Telegram Notification Level 2
+
+ระบบรอบนี้เพิ่ม Telegram notification แล้ว โดย scanner จะคำนวณ enabled signal rules และส่งข้อความเข้า Telegram เมื่อเจอสัญญาณใหม่ที่ยังไม่เคยบันทึกใน candle เดียวกัน
+
+### 1) Setup Telegram Bot
+
+1. เปิด Telegram แล้วคุยกับ `@BotFather`
+2. สร้าง bot ใหม่ด้วย `/newbot`
+3. Copy bot token มาใส่ใน API `.env`
+
+```env
+TELEGRAM_BOT_TOKEN=123456789:YOUR_BOT_TOKEN
+TELEGRAM_CHAT_ID=123456789
+```
+
+จากนั้น restart API
+
+```bash
+pnpm dev
+```
+
+### 2) หา Telegram Chat ID
+
+ส่งข้อความหา bot ของคุณก่อน 1 ครั้ง เช่น `hello`
+
+จากนั้นเปิด URL นี้ใน browser โดยแทน token ของคุณเอง:
+
+```text
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+```
+
+หา field:
+
+```json
+"chat": { "id": 123456789 }
+```
+
+เอาเลข `id` ไปใส่ในหน้า Rules > Telegram Notification
+
+### 3) Test Notification
+
+ในหน้า Web:
+
+```text
+Rules -> Telegram Notification -> Save Telegram -> Send Test
+```
+
+ถ้า bot token และ chat id ถูกต้อง จะมี test message เด้งใน Telegram
+
+### 4) Manual Scanner
+
+ในหน้า Web กด:
+
+```text
+Rules -> Telegram Notification -> Run Scanner Now
+```
+
+ระบบจะ scan rules ของ workspace ปัจจุบัน และส่ง Telegram ถ้าเกิด signal ใหม่
+
+### 5) Scanner API
+
+```http
+POST /api/scanner/run
+X-Workspace-Id: your-workspace-id
+```
+
+ถ้าตั้ง `SCANNER_SECRET` ใน `.env` ต้องส่ง header เพิ่ม:
+
+```http
+X-Scanner-Secret: your-secret
+```
+
+### 6) Cloud Scheduler Plan
+
+ตอน deploy production ให้ตั้ง env:
+
+```env
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+SCANNER_SECRET=strong-random-secret
+```
+
+แล้วใช้ Cloud Scheduler เรียก:
+
+```http
+POST https://YOUR_API_URL/api/scanner/run
+X-Scanner-Secret: strong-random-secret
+```
+
+ถ้าไม่มี `X-Workspace-Id` scanner จะ scan เฉพาะ workspaces ที่เปิด Telegram notification และมี chat id แล้ว
+
+### Current Scanner Limitation
+
+รอบนี้ scanner รองรับเฉพาะ built-in `CDC_ACTION_ZONE` ก่อน เพราะ custom script ยัง run ฝั่ง browser เพื่อความปลอดภัย ยังไม่เอา custom script ไปรันบน backend จนกว่าจะทำ sandbox
+
+
+### Note: TELEGRAM_CHAT_ID fallback
+
+ถ้าใส่ `TELEGRAM_CHAT_ID` ใน `.env` แล้ว หน้าเว็บสามารถกด Send Test ได้โดยไม่ต้องกรอก Chat ID ในช่องก็ได้ แต่ยังต้องเปิด `Status = ON` และกด Save Telegram สำหรับ workspace นั้นก่อนให้ scanner ส่งจริง
