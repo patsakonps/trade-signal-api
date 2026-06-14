@@ -1,14 +1,17 @@
 import { z } from "zod";
 
+const supportedTimeframes = new Set(["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"]);
+const supportedConditions = new Set(["BUY_OR_SELL", "BUY", "SELL", "GREEN", "RED", "YELLOW", "BLUE", "WHITE", "ZONE_CHANGED"]);
+
 export const createSignalRuleSchema = z.object({
-  name: z.string().min(1).max(100),
-  exchange: z.string().default("BINANCE"),
-  symbol: z.string().min(3).max(30).transform((value) => value.toUpperCase()),
-  timeframe: z.string().min(1).max(10).default("4h"),
+  name: z.string().trim().min(1).max(100),
+  exchange: z.string().trim().default("BINANCE"),
+  symbol: z.string().trim().min(3).max(30).transform((value) => value.toUpperCase()),
+  timeframe: z.string().trim().default("4h").refine((value) => supportedTimeframes.has(value), "Unsupported timeframe"),
   indicatorType: z.enum(["BUILT_IN", "CUSTOM_SCRIPT"]).default("BUILT_IN"),
-  indicatorKey: z.string().min(2).max(80),
-  indicatorTemplateId: z.string().optional().nullable(),
-  condition: z.string().min(1).max(60).default("BUY_OR_SELL"),
+  indicatorKey: z.string().trim().min(2).max(80),
+  indicatorTemplateId: z.string().trim().optional().nullable(),
+  condition: z.string().trim().transform((value) => value.toUpperCase()).default("BUY_OR_SELL").refine((value) => supportedConditions.has(value), "Unsupported condition"),
   enabled: z.boolean().default(true),
   paramsJson: z.record(z.unknown()).default({})
 });

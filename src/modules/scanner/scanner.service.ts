@@ -20,9 +20,13 @@ type ScanRuleResult = {
   zone?: string;
   message: string;
   telegramSent?: boolean;
+  candleCloseTime?: string;
+  price?: number;
 };
 
 type ScanSummary = {
+  scannedAt: string;
+  durationMs: number;
   scannedRules: number;
   triggered: number;
   telegramSent: number;
@@ -35,10 +39,7 @@ function getClosedCandles(candles: Candle[]): Candle[] {
   const now = Date.now();
   if (!candles.length) return candles;
   const last = candles[candles.length - 1];
-  if (last.closeTime > now) {
-    return candles.slice(0, -1);
-  }
-  return candles;
+  return last.closeTime > now ? candles.slice(0, -1) : candles;
 }
 
 function normalizeCondition(condition: string): string {
@@ -84,8 +85,24 @@ function paramsToRecord(value: Prisma.JsonValue): Record<string, unknown> {
   return {};
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "Unexpected scanner error";
+}
+
+function logScannerEvent(level: "info" | "warn" | "error", message: string, meta: Record<string, unknown> = {}) {
+  const payload = { scope: "scanner", message, ...meta };
+  const line = JSON.stringify(payload);
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.info(line);
+}
+
 export class ScannerService {
   async run(options: { workspaceId?: string | null } = {}): Promise<ScanSummary> {
+    const startedAt = Date.now();
+    const scannedAt = new Date().toISOString();
+
     const rules = await prisma.signalRule.findMany({
       where: {
         enabled: true,
@@ -109,6 +126,8 @@ export class ScannerService {
     });
 
     const summary: ScanSummary = {
+      scannedAt,
+      durationMs: 0,
       scannedRules: rules.length,
       triggered: 0,
       telegramSent: 0,
@@ -116,6 +135,8 @@ export class ScannerService {
       errors: 0,
       results: []
     };
+
+    logScannerEvent("info", "scan_started", { workspaceId: options.workspaceId ?? "ALL", rules: rules.length });
 
     for (const rule of rules) {
       try {
@@ -155,6 +176,9 @@ export class ScannerService {
           params: paramsToRecord(rule.paramsJson)
         });
 
+        const latestCandle = candles[candles.length - 1];
+        const candleCloseTime = new Date(latestCandle.closeTime);
+
         if (!matchesCondition(result, rule.condition)) {
           summary.results.push({
             ruleId: rule.id,
@@ -165,14 +189,14 @@ export class ScannerService {
             status: "NO_SIGNAL",
             signalType: result.latest.signal,
             zone: result.latest.zone,
+            candleCloseTime: candleCloseTime.toISOString(),
+            price: result.latest.price,
             message: `No matching signal for condition ${rule.condition}`
           });
           continue;
         }
 
-        const latestCandle = candles[candles.length - 1];
         const signalType = getSignalType(result, rule.condition);
-        const candleCloseTime = new Date(latestCandle.closeTime);
 
         const existingSignal = await prisma.signal.findFirst({
           where: {
@@ -193,12 +217,14 @@ export class ScannerService {
             status: "DUPLICATE",
             signalType,
             zone: result.latest.zone,
+            candleCloseTime: candleCloseTime.toISOString(),
+            price: result.latest.price,
             message: "Signal already saved for this candle"
           });
           continue;
         }
 
-        await prisma.signal.create({
+        const createdSignal = await prisma.signal.create({
           data: {
             workspaceId: rule.workspaceId,
             signalRuleId: rule.id,
@@ -221,22 +247,60 @@ export class ScannerService {
         summary.triggered += 1;
 
         let telegramSent = false;
+        let message = "Signal saved. Telegram not configured or disabled.";
         const telegramSetting = rule.workspace.telegramNotification;
         const telegramChatId = telegramService.resolveChatId(telegramSetting?.chatId);
-        if (telegramSetting?.enabled && telegramChatId && telegramService.isConfigured()) {
-          const message = telegramService.buildSignalMessage({
-            ruleName: rule.name,
-            symbol: rule.symbol,
-            timeframe: rule.timeframe,
-            signalType,
-            zone: result.latest.zone,
-            price: result.latest.price,
-            candleCloseTime,
-            indicatorKey: rule.indicatorKey
-          });
-          await telegramService.sendMessage(telegramChatId, message);
-          telegramSent = true;
-          summary.telegramSent += 1;
+        const shouldSendTelegram = Boolean(telegramSetting?.enabled && telegramChatId && telegramService.isConfigured());
+
+        if (shouldSendTelegram) {
+          try {
+            const telegramMessage = telegramService.buildSignalMessage({
+              ruleName: rule.name,
+              symbol: rule.symbol,
+              timeframe: rule.timeframe,
+              signalType,
+              zone: result.latest.zone,
+              price: result.latest.price,
+              candleCloseTime,
+              indicatorKey: rule.indicatorKey
+            });
+            await telegramService.sendMessage(telegramChatId, telegramMessage);
+            telegramSent = true;
+            summary.telegramSent += 1;
+            message = "Signal saved and Telegram notification sent";
+          } catch (telegramError) {
+            await prisma.signal.delete({ where: { id: createdSignal.id } }).catch(() => undefined);
+            summary.triggered -= 1;
+            summary.errors += 1;
+            const errorMessage = `Telegram failed, signal was not saved so the next scan can retry: ${getErrorMessage(telegramError)}`;
+            logScannerEvent("error", "telegram_send_failed", {
+              ruleId: rule.id,
+              workspaceId: rule.workspaceId,
+              symbol: rule.symbol,
+              timeframe: rule.timeframe,
+              candleCloseTime: candleCloseTime.toISOString(),
+              error: getErrorMessage(telegramError)
+            });
+            summary.results.push({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              workspaceId: rule.workspaceId,
+              symbol: rule.symbol,
+              timeframe: rule.timeframe,
+              status: "ERROR",
+              signalType,
+              zone: result.latest.zone,
+              candleCloseTime: candleCloseTime.toISOString(),
+              price: result.latest.price,
+              telegramSent: false,
+              message: errorMessage
+            });
+            continue;
+          }
+        } else if (telegramSetting?.enabled) {
+          message = !telegramService.isConfigured()
+            ? "Signal saved. Telegram bot token is missing."
+            : "Signal saved. Telegram chat id is missing.";
         }
 
         summary.results.push({
@@ -248,11 +312,20 @@ export class ScannerService {
           status: "TRIGGERED",
           signalType,
           zone: result.latest.zone,
+          candleCloseTime: candleCloseTime.toISOString(),
+          price: result.latest.price,
           telegramSent,
-          message: telegramSent ? "Signal saved and Telegram notification sent" : "Signal saved. Telegram not configured or disabled."
+          message
         });
       } catch (error) {
         summary.errors += 1;
+        logScannerEvent("error", "rule_scan_failed", {
+          ruleId: rule.id,
+          workspaceId: rule.workspaceId,
+          symbol: rule.symbol,
+          timeframe: rule.timeframe,
+          error: getErrorMessage(error)
+        });
         summary.results.push({
           ruleId: rule.id,
           ruleName: rule.name,
@@ -260,10 +333,21 @@ export class ScannerService {
           symbol: rule.symbol,
           timeframe: rule.timeframe,
           status: "ERROR",
-          message: error instanceof Error ? error.message : "Unexpected scanner error"
+          message: getErrorMessage(error)
         });
       }
     }
+
+    summary.durationMs = Date.now() - startedAt;
+    logScannerEvent(summary.errors ? "warn" : "info", "scan_finished", {
+      workspaceId: options.workspaceId ?? "ALL",
+      scannedRules: summary.scannedRules,
+      triggered: summary.triggered,
+      telegramSent: summary.telegramSent,
+      skipped: summary.skipped,
+      errors: summary.errors,
+      durationMs: summary.durationMs
+    });
 
     return summary;
   }

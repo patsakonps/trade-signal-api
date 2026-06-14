@@ -264,7 +264,10 @@ POST /api/scanner/run
 X-Workspace-Id: your-workspace-id
 ```
 
-ถ้าตั้ง `SCANNER_SECRET` ใน `.env` ต้องส่ง header เพิ่ม:
+ถ้าตั้ง `SCANNER_SECRET` ใน `.env`:
+
+- global scan จาก Cloud Scheduler ต้องส่ง `X-Scanner-Secret` เสมอ
+- manual scan จากหน้าเว็บใช้ `X-Workspace-Id` เพื่อ scan เฉพาะ workspace ปัจจุบันได้ ไม่ต้องใส่ secret ใน browser
 
 ```http
 X-Scanner-Secret: your-secret
@@ -287,12 +290,18 @@ POST https://YOUR_API_URL/api/scanner/run
 X-Scanner-Secret: strong-random-secret
 ```
 
-ถ้าไม่มี `X-Workspace-Id` scanner จะ scan เฉพาะ workspaces ที่เปิด Telegram notification และมี chat id แล้ว
+ถ้าไม่มี `X-Workspace-Id` scanner จะ scan เฉพาะ workspaces ที่เปิด Telegram notification แล้ว ส่วน chat id จะใช้ค่าที่บันทึกใน workspace ก่อน ถ้าไม่มีจะ fallback ไปที่ `TELEGRAM_CHAT_ID` ใน env
 
 ### Current Scanner Limitation
 
 รอบนี้ scanner รองรับเฉพาะ built-in `CDC_ACTION_ZONE` ก่อน เพราะ custom script ยัง run ฝั่ง browser เพื่อความปลอดภัย ยังไม่เอา custom script ไปรันบน backend จนกว่าจะทำ sandbox
 
+### Production Scanner Behavior
+
+- Scanner ใช้เฉพาะ candle ที่ปิดแล้ว เพื่อลดการแจ้งเตือนหลอกจากแท่งที่ยังวิ่งอยู่
+- ถ้าเจอ signal ซ้ำใน candle เดิม จะตอบ `DUPLICATE` และไม่ส่ง Telegram ซ้ำ
+- ถ้า Telegram ส่งไม่สำเร็จหลังสร้าง signal ระบบจะลบ signal ที่เพิ่งสร้าง เพื่อให้รอบถัดไป retry ได้ ไม่ติด duplicate เงียบ
+- Response ของ scanner มี `scannedAt`, `durationMs`, `candleCloseTime`, `price`, `status`, และ `message` สำหรับ debug ใน Cloud Run logs / หน้าเว็บ
 
 ### Note: TELEGRAM_CHAT_ID fallback
 
