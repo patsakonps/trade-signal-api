@@ -7,6 +7,7 @@ import { calculateCdcActionZone } from "./cdc-action-zone.service";
 import { builtinIndicators } from "./builtin-indicators";
 import { indicatorTemplateCreateSchema, indicatorTemplateUpdateSchema } from "./indicator.schema";
 import { z } from "zod";
+import type { Candle } from "../market/market.types";
 
 export const indicatorRoutes = Router();
 
@@ -15,6 +16,13 @@ const cdcQuerySchema = z.object({
   timeframe: z.string().default("4h"),
   limit: z.coerce.number().int().min(50).max(1000).default(240)
 });
+
+function getClosedCandles(candles: Candle[]): Candle[] {
+  const now = Date.now();
+  if (!candles.length) return candles;
+  const last = candles[candles.length - 1];
+  return last.closeTime > now ? candles.slice(0, -1) : candles;
+}
 
 indicatorRoutes.get("/templates", async (req, res, next) => {
   try {
@@ -124,7 +132,10 @@ indicatorRoutes.get("/cdc-action-zone", async (req, res, next) => {
   try {
     const { symbol, timeframe, limit } = cdcQuerySchema.parse(req.query);
     const normalizedSymbol = symbol.toUpperCase();
-    const candles = await marketService.getCandles(normalizedSymbol, timeframe, limit);
+    const candles = getClosedCandles(await marketService.getCandles(normalizedSymbol, timeframe, limit));
+    if (candles.length < 50) {
+      throw new AppError(400, "Not enough closed candles to calculate CDC Action Zone");
+    }
     const result = calculateCdcActionZone({ symbol: normalizedSymbol, timeframe, candles });
 
     res.json(result);

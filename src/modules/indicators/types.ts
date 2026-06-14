@@ -5,6 +5,7 @@ export type ZoneName = "GREEN" | "RED" | "YELLOW" | "BLUE" | "WHITE";
 
 export type IndicatorSeriesPoint = {
   time: number;
+  closeTime: number;
   price: number;
   zone?: ZoneName;
   signal?: SignalName;

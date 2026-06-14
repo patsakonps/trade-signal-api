@@ -13,6 +13,7 @@ import { portfolioRoutes } from "./modules/portfolio/portfolio.routes";
 import { importRoutes } from "./modules/import/import.routes";
 import { notificationRoutes } from "./modules/notifications/notification.routes";
 import { scannerRoutes } from "./modules/scanner/scanner.routes";
+import { signalRoutes } from "./modules/signals/signal.routes";
 
 export const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/portfolio", workspaceMiddleware, portfolioRoutes);
 app.use("/api/import", workspaceMiddleware, importRoutes);
 app.use("/api/notifications", workspaceMiddleware, notificationRoutes);
 app.use("/api/scanner", scannerRoutes);
+app.use("/api/signals", workspaceMiddleware, signalRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

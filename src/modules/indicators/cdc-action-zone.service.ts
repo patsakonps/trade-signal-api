@@ -58,6 +58,7 @@ export function calculateCdcActionZone(input: IndicatorInput): IndicatorResult {
 
     return {
       time: candle.openTime,
+      closeTime: candle.closeTime,
       price: candle.close,
       zone,
       signal,
