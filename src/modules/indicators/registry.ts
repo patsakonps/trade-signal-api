@@ -1,6 +1,7 @@
 import { calculateCdcActionZone, CDC_ACTION_ZONE_KEY } from "./cdc-action-zone.service";
 import { calculateHalfTrend, HALF_TREND_KEY, defaultHalfTrendParams } from "./half-trend.service";
 import { calculateRsi14, RSI_14_KEY, defaultRsi14Params } from "./rsi-14.service";
+import { calculateAdaptiveRsiTrigger, ADAPTIVE_RSI_TRIGGER_KEY, defaultAdaptiveRsiTriggerParams } from "./adaptive-rsi-trigger.service";
 import type { IndicatorInput, IndicatorResult } from "./types";
 
 export type BuiltInIndicatorDefinition = {
@@ -24,6 +25,11 @@ export const builtinIndicatorRegistry: Record<string, BuiltInIndicatorDefinition
     key: RSI_14_KEY,
     minCandles: defaultRsi14Params.period + 2,
     calculate: calculateRsi14
+  },
+  [ADAPTIVE_RSI_TRIGGER_KEY]: {
+    key: ADAPTIVE_RSI_TRIGGER_KEY,
+    minCandles: defaultAdaptiveRsiTriggerParams.length + Math.floor(defaultAdaptiveRsiTriggerParams.length / 2) + 10,
+    calculate: calculateAdaptiveRsiTrigger
   }
 };
 

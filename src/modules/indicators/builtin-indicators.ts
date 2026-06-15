@@ -1,6 +1,7 @@
 import { CDC_ACTION_ZONE_KEY, defaultCdcParams } from "./cdc-action-zone.service";
 import { HALF_TREND_KEY, defaultHalfTrendParams } from "./half-trend.service";
 import { RSI_14_KEY, defaultRsi14Params } from "./rsi-14.service";
+import { ADAPTIVE_RSI_TRIGGER_KEY, defaultAdaptiveRsiTriggerParams } from "./adaptive-rsi-trigger.service";
 
 export const builtinIndicators = [
   {
@@ -37,6 +38,18 @@ export const builtinIndicators = [
     paramsJson: defaultRsi14Params,
     description:
       "Wilder RSI with period 14. Buy fires when RSI crosses back above 30, Sell fires when RSI crosses back below 70. Oversold/overbought alerts are also exposed.",
+    script: null
+  },
+  {
+    id: ADAPTIVE_RSI_TRIGGER_KEY,
+    key: ADAPTIVE_RSI_TRIGGER_KEY,
+    name: "Adaptive RSI Trigger",
+    type: "BUILT_IN",
+    isBuiltIn: true,
+    enabled: true,
+    paramsJson: defaultAdaptiveRsiTriggerParams,
+    description:
+      "Adaptive RSI with trigger line inspired by the Rainbow Adaptive RSI concept. Default length 15, power 1, source close, overbought 80 and oversold 20. Buy/Sell fires on Adaptive RSI / Trigger crosses.",
     script: null
   }
 ];
