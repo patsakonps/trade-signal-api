@@ -3,15 +3,16 @@ import { prisma } from "../../db/prisma";
 import { requireWorkspaceId } from "../../middleware/workspace.middleware";
 import { AppError } from "../../middleware/error.middleware";
 import { marketService } from "../market/market.service";
-import { calculateCdcActionZone } from "./cdc-action-zone.service";
+import { CDC_ACTION_ZONE_KEY } from "./cdc-action-zone.service";
 import { builtinIndicators } from "./builtin-indicators";
+import { calculateBuiltInIndicator, getBuiltInIndicatorDefinition } from "./registry";
 import { indicatorTemplateCreateSchema, indicatorTemplateUpdateSchema } from "./indicator.schema";
 import { z } from "zod";
 import type { Candle } from "../market/market.types";
 
 export const indicatorRoutes = Router();
 
-const cdcQuerySchema = z.object({
+const indicatorQuerySchema = z.object({
   symbol: z.string().default("BTCUSDT"),
   timeframe: z.string().default("4h"),
   limit: z.coerce.number().int().min(50).max(1000).default(240)
@@ -128,15 +129,38 @@ indicatorRoutes.delete("/templates/:id", async (req, res, next) => {
   }
 });
 
-indicatorRoutes.get("/cdc-action-zone", async (req, res, next) => {
+
+indicatorRoutes.get("/built-in/:key", async (req, res, next) => {
   try {
-    const { symbol, timeframe, limit } = cdcQuerySchema.parse(req.query);
+    const indicatorKey = req.params.key.trim().toUpperCase();
+    const indicatorDefinition = getBuiltInIndicatorDefinition(indicatorKey);
+    if (!indicatorDefinition) throw new AppError(404, "Built-in indicator not found");
+
+    const { symbol, timeframe, limit } = indicatorQuerySchema.parse(req.query);
     const normalizedSymbol = symbol.toUpperCase();
     const candles = getClosedCandles(await marketService.getCandles(normalizedSymbol, timeframe, limit));
-    if (candles.length < 50) {
+    if (candles.length < indicatorDefinition.minCandles) {
+      throw new AppError(400, `Not enough closed candles to calculate ${indicatorKey}`);
+    }
+
+    const result = calculateBuiltInIndicator(indicatorKey, { symbol: normalizedSymbol, timeframe, candles });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+indicatorRoutes.get("/cdc-action-zone", async (req, res, next) => {
+  try {
+    const { symbol, timeframe, limit } = indicatorQuerySchema.parse(req.query);
+    const normalizedSymbol = symbol.toUpperCase();
+    const indicatorDefinition = getBuiltInIndicatorDefinition(CDC_ACTION_ZONE_KEY);
+    if (!indicatorDefinition) throw new AppError(500, "CDC Action Zone definition is missing");
+    const candles = getClosedCandles(await marketService.getCandles(normalizedSymbol, timeframe, limit));
+    if (candles.length < indicatorDefinition.minCandles) {
       throw new AppError(400, "Not enough closed candles to calculate CDC Action Zone");
     }
-    const result = calculateCdcActionZone({ symbol: normalizedSymbol, timeframe, candles });
+    const result = calculateBuiltInIndicator(CDC_ACTION_ZONE_KEY, { symbol: normalizedSymbol, timeframe, candles });
 
     res.json(result);
   } catch (error) {

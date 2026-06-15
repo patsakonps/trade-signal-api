@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { marketService } from "../market/market.service";
-import { calculateCdcActionZone, CDC_ACTION_ZONE_KEY } from "../indicators/cdc-action-zone.service";
+import { calculateBuiltInIndicator, getBuiltInIndicatorDefinition } from "../indicators/registry";
 import type { IndicatorResult, IndicatorSeriesPoint } from "../indicators/types";
 import type { Candle } from "../market/market.types";
 import { telegramService } from "../notifications/telegram.service";
@@ -75,6 +75,9 @@ function getSignalType(result: IndicatorResult, condition: string): string {
   if (normalized === "ZONE_CHANGED" && result.latest.zone) return `ZONE_${result.latest.zone}`;
   if (zoneConditions.has(normalized)) return normalized;
 
+  const matchedAlert = result.alerts.find((alert) => alert.name.toUpperCase() === normalized && alert.triggered);
+  if (matchedAlert) return normalized;
+
   return "SIGNAL";
 }
 
@@ -140,7 +143,7 @@ export class ScannerService {
 
     for (const rule of rules) {
       try {
-        if (rule.indicatorType !== "BUILT_IN" || rule.indicatorKey !== CDC_ACTION_ZONE_KEY) {
+        if (rule.indicatorType !== "BUILT_IN") {
           summary.skipped += 1;
           summary.results.push({
             ruleId: rule.id,
@@ -149,13 +152,28 @@ export class ScannerService {
             symbol: rule.symbol,
             timeframe: rule.timeframe,
             status: "SKIPPED",
-            message: "Scanner currently supports built-in CDC Action Zone only. Custom scripts still run client-side."
+            message: "Scanner currently supports server-side built-in indicators only. Custom scripts still run client-side."
+          });
+          continue;
+        }
+
+        const indicatorDefinition = getBuiltInIndicatorDefinition(rule.indicatorKey);
+        if (!indicatorDefinition) {
+          summary.skipped += 1;
+          summary.results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            workspaceId: rule.workspaceId,
+            symbol: rule.symbol,
+            timeframe: rule.timeframe,
+            status: "SKIPPED",
+            message: `Unsupported built-in indicator: ${rule.indicatorKey}`
           });
           continue;
         }
 
         const candles = getClosedCandles(await marketService.getCandles(rule.symbol, rule.timeframe, DEFAULT_SCAN_LIMIT));
-        if (candles.length < 50) {
+        if (candles.length < indicatorDefinition.minCandles) {
           summary.skipped += 1;
           summary.results.push({
             ruleId: rule.id,
@@ -164,12 +182,12 @@ export class ScannerService {
             symbol: rule.symbol,
             timeframe: rule.timeframe,
             status: "SKIPPED",
-            message: "Not enough closed candles to calculate signal"
+            message: `Not enough closed candles to calculate ${rule.indicatorKey}. Required ${indicatorDefinition.minCandles}, got ${candles.length}`
           });
           continue;
         }
 
-        const result = calculateCdcActionZone({
+        const result = calculateBuiltInIndicator(rule.indicatorKey, {
           symbol: rule.symbol,
           timeframe: rule.timeframe,
           candles,

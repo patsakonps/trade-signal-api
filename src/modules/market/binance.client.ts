@@ -1,14 +1,11 @@
 import axios from "axios";
 import { env } from "../../config/env";
 import type { Candle } from "./market.types";
-
-const allowedIntervals = new Set([
-  "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"
-]);
+import { nativeBinanceTimeframeSet } from "./timeframes";
 
 export class BinanceClient {
   async getKlines(symbol: string, interval: string, limit: number): Promise<Candle[]> {
-    if (!allowedIntervals.has(interval)) {
+    if (!nativeBinanceTimeframeSet.has(interval)) {
       throw new Error(`Unsupported timeframe: ${interval}`);
     }
 
