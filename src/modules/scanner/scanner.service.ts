@@ -43,7 +43,7 @@ function getClosedCandles(candles: Candle[]): Candle[] {
 }
 
 function normalizeCondition(condition: string): string {
-  return condition.trim().toUpperCase();
+  return condition.trim().toUpperCase().replace(/[\s-]+/g, "_");
 }
 
 function didZoneChange(series: IndicatorSeriesPoint[]): boolean {
@@ -63,7 +63,7 @@ function matchesCondition(result: IndicatorResult, condition: string): boolean {
   if (normalized === "ZONE_CHANGED") return didZoneChange(result.series);
   if (zoneConditions.has(normalized)) return latest.zone === normalized;
 
-  return result.alerts.some((alert) => alert.name.toUpperCase() === normalized && alert.triggered);
+  return result.alerts.some((alert) => normalizeCondition(alert.name) === normalized && alert.triggered);
 }
 
 function getSignalType(result: IndicatorResult, condition: string): string {
@@ -75,7 +75,7 @@ function getSignalType(result: IndicatorResult, condition: string): string {
   if (normalized === "ZONE_CHANGED" && result.latest.zone) return `ZONE_${result.latest.zone}`;
   if (zoneConditions.has(normalized)) return normalized;
 
-  const matchedAlert = result.alerts.find((alert) => alert.name.toUpperCase() === normalized && alert.triggered);
+  const matchedAlert = result.alerts.find((alert) => normalizeCondition(alert.name) === normalized && alert.triggered);
   if (matchedAlert) return normalized;
 
   return "SIGNAL";

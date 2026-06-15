@@ -2,6 +2,8 @@ import { calculateCdcActionZone, CDC_ACTION_ZONE_KEY } from "./cdc-action-zone.s
 import { calculateHalfTrend, HALF_TREND_KEY, defaultHalfTrendParams } from "./half-trend.service";
 import { calculateRsi14, RSI_14_KEY, defaultRsi14Params } from "./rsi-14.service";
 import { calculateAdaptiveRsiTrigger, ADAPTIVE_RSI_TRIGGER_KEY, defaultAdaptiveRsiTriggerParams } from "./adaptive-rsi-trigger.service";
+import { calculateCvdTakerDelta, CVD_TAKER_DELTA_KEY, defaultCvdTakerDeltaParams } from "./cvd-taker-delta.service";
+import { calculateBillWilliamsMfi, BILL_WILLIAMS_MFI_KEY } from "./bill-williams-mfi.service";
 import type { IndicatorInput, IndicatorResult } from "./types";
 
 export type BuiltInIndicatorDefinition = {
@@ -30,6 +32,16 @@ export const builtinIndicatorRegistry: Record<string, BuiltInIndicatorDefinition
     key: ADAPTIVE_RSI_TRIGGER_KEY,
     minCandles: defaultAdaptiveRsiTriggerParams.length + Math.floor(defaultAdaptiveRsiTriggerParams.length / 2) + 10,
     calculate: calculateAdaptiveRsiTrigger
+  },
+  [CVD_TAKER_DELTA_KEY]: {
+    key: CVD_TAKER_DELTA_KEY,
+    minCandles: defaultCvdTakerDeltaParams.divergenceLookback + 2,
+    calculate: calculateCvdTakerDelta
+  },
+  [BILL_WILLIAMS_MFI_KEY]: {
+    key: BILL_WILLIAMS_MFI_KEY,
+    minCandles: 3,
+    calculate: calculateBillWilliamsMfi
   }
 };
 

@@ -37,7 +37,10 @@ function aggregateCandles(candles: Candle[], intervalMs: number, expectedCandles
         low: Math.min(...sortedBucket.map((item) => item.low)),
         close: last.close,
         volume: sortedBucket.reduce((sum, item) => sum + item.volume, 0),
-        closeTime: bucketOpenTime + intervalMs - 1
+        quoteVolume: sortedBucket.reduce((sum, item) => sum + (item.quoteVolume ?? 0), 0),
+        closeTime: bucketOpenTime + intervalMs - 1,
+        takerBuyBaseVolume: sortedBucket.reduce((sum, item) => sum + (item.takerBuyBaseVolume ?? 0), 0),
+        takerBuyQuoteVolume: sortedBucket.reduce((sum, item) => sum + (item.takerBuyQuoteVolume ?? 0), 0)
       };
     });
 }

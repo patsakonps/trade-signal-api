@@ -5,7 +5,10 @@ export type Candle = {
   low: number;
   close: number;
   volume: number;
+  quoteVolume?: number;
   closeTime: number;
+  takerBuyBaseVolume?: number;
+  takerBuyQuoteVolume?: number;
 };
 
 export type { Timeframe } from "./timeframes";

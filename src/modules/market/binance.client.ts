@@ -28,7 +28,10 @@ export class BinanceClient {
       low: Number(item[3]),
       close: Number(item[4]),
       volume: Number(item[5]),
-      closeTime: Number(item[6])
+      quoteVolume: Number(item[7]),
+      closeTime: Number(item[6]),
+      takerBuyBaseVolume: Number(item[9]),
+      takerBuyQuoteVolume: Number(item[10])
     }));
   }
 }

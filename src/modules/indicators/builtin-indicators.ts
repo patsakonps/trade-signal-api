@@ -2,6 +2,8 @@ import { CDC_ACTION_ZONE_KEY, defaultCdcParams } from "./cdc-action-zone.service
 import { HALF_TREND_KEY, defaultHalfTrendParams } from "./half-trend.service";
 import { RSI_14_KEY, defaultRsi14Params } from "./rsi-14.service";
 import { ADAPTIVE_RSI_TRIGGER_KEY, defaultAdaptiveRsiTriggerParams } from "./adaptive-rsi-trigger.service";
+import { CVD_TAKER_DELTA_KEY, defaultCvdTakerDeltaParams } from "./cvd-taker-delta.service";
+import { BILL_WILLIAMS_MFI_KEY, defaultBillWilliamsMfiParams } from "./bill-williams-mfi.service";
 
 export const builtinIndicators = [
   {
@@ -50,6 +52,30 @@ export const builtinIndicators = [
     paramsJson: defaultAdaptiveRsiTriggerParams,
     description:
       "Adaptive RSI with trigger line inspired by the Rainbow Adaptive RSI concept. Default length 15, power 1, source close, overbought 80 and oversold 20. Buy/Sell fires on Adaptive RSI / Trigger crosses.",
+    script: null
+  },
+  {
+    id: CVD_TAKER_DELTA_KEY,
+    key: CVD_TAKER_DELTA_KEY,
+    name: "CVD Taker Delta",
+    type: "BUILT_IN",
+    isBuiltIn: true,
+    enabled: true,
+    paramsJson: defaultCvdTakerDeltaParams,
+    description:
+      "Approximate cumulative volume delta from Binance kline taker-buy volume. Buy/Sell fires on price/CVD divergence using closed candles only.",
+    script: null
+  },
+  {
+    id: BILL_WILLIAMS_MFI_KEY,
+    key: BILL_WILLIAMS_MFI_KEY,
+    name: "Bill Williams MFI",
+    type: "BUILT_IN",
+    isBuiltIn: true,
+    enabled: true,
+    paramsJson: defaultBillWilliamsMfiParams,
+    description:
+      "Market Facilitation Index: (High - Low) / Volume. Highlights Green, Fade, Fake, and Squat states. Buy/Sell fires after a Squat candle breakout.",
     script: null
   }
 ];
