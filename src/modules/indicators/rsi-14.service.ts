@@ -25,6 +25,13 @@ function formatValue(value: number | null): number | null {
   return Number(value.toFixed(4));
 }
 
+function resolveState(rsi: number | null, overbought: number, oversold: number): string {
+  if (rsi === null) return "WAITING";
+  if (rsi >= overbought) return "OVERBOUGHT";
+  if (rsi <= oversold) return "OVERSOLD";
+  return rsi >= 50 ? "ABOVE_50" : "BELOW_50";
+}
+
 function calculateRsiValues(closes: number[], period: number): Array<number | null> {
   const rsiValues: Array<number | null> = Array(closes.length).fill(null);
   if (closes.length <= period) return rsiValues;
@@ -94,6 +101,7 @@ export function calculateRsi14(input: IndicatorInput): IndicatorResult {
       color: zone,
       values: {
         RSI: formatValue(rsi),
+        State: resolveState(rsi, overbought, oversold),
         Period: period,
         Overbought: overbought,
         Oversold: oversold
