@@ -1,5 +1,6 @@
 import type { Candle } from "../market/market.types";
-import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
+import { neutralOpinion, opinion } from "./opinion";
+import type { IndicatorInput, IndicatorResult, SignalName, ZoneName, NormalizedOpinion } from "./types";
 
 export const CVD_TAKER_DELTA_KEY = "CVD_TAKER_DELTA";
 
@@ -61,6 +62,14 @@ function resolveZone(delta: number, cvd: number, previousCvd: number | null): Zo
   if (delta > 0) return "BLUE";
   if (delta < 0) return "YELLOW";
   return "WHITE";
+}
+
+function resolveOpinion(divergence: string, delta: number, cvd: number, previousCvd: number | null): NormalizedOpinion {
+  if (divergence === "BULLISH_DIVERGENCE") return opinion("BUY", "STRONG", "Bullish CVD divergence: price made a lower low while CVD held higher");
+  if (divergence === "BEARISH_DIVERGENCE") return opinion("SELL", "STRONG", "Bearish CVD divergence: price made a higher high while CVD made lower");
+  if (previousCvd !== null && delta > 0 && cvd > previousCvd) return opinion("BUY", "NORMAL", "CVD is rising and latest taker delta is positive");
+  if (previousCvd !== null && delta < 0 && cvd < previousCvd) return opinion("SELL", "NORMAL", "CVD is falling and latest taker delta is negative");
+  return neutralOpinion("CVD flow is mixed or flat");
 }
 
 function getDivergenceState(
@@ -129,6 +138,7 @@ export function calculateCvdTakerDelta(input: IndicatorInput): IndicatorResult {
       zone,
       signal,
       color: zone,
+      opinion: resolveOpinion(divergence, cvdPoint.delta, cvdPoint.cvd, previousCvd),
       values: {
         CVD: formatValue(cvdPoint.cvd, 4),
         Delta: formatValue(cvdPoint.delta, 4),

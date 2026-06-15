@@ -1,4 +1,5 @@
-import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
+import { neutralOpinion, opinion } from "./opinion";
+import type { IndicatorInput, IndicatorResult, SignalName, ZoneName, NormalizedOpinion } from "./types";
 
 export const RSI_14_KEY = "RSI_14";
 
@@ -30,6 +31,13 @@ function resolveState(rsi: number | null, overbought: number, oversold: number):
   if (rsi >= overbought) return "OVERBOUGHT";
   if (rsi <= oversold) return "OVERSOLD";
   return rsi >= 50 ? "ABOVE_50" : "BELOW_50";
+}
+
+function resolveOpinion(rsi: number | null, overbought: number, oversold: number): NormalizedOpinion {
+  if (rsi === null) return neutralOpinion("RSI is still waiting for enough closed candles");
+  if (rsi <= oversold) return opinion("BUY", "STRONG", `RSI ${rsi.toFixed(2)} is oversold at or below ${oversold}`);
+  if (rsi >= overbought) return opinion("SELL", "STRONG", `RSI ${rsi.toFixed(2)} is overbought at or above ${overbought}`);
+  return neutralOpinion(`RSI ${rsi.toFixed(2)} is between ${oversold} and ${overbought}`);
 }
 
 function calculateRsiValues(closes: number[], period: number): Array<number | null> {
@@ -99,6 +107,7 @@ export function calculateRsi14(input: IndicatorInput): IndicatorResult {
       zone,
       signal,
       color: zone,
+      opinion: resolveOpinion(rsi, overbought, oversold),
       values: {
         RSI: formatValue(rsi),
         State: resolveState(rsi, overbought, oversold),

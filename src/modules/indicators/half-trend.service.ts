@@ -1,4 +1,5 @@
 import type { Candle } from "../market/market.types";
+import { opinion } from "./opinion";
 import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
 
 export const HALF_TREND_KEY = "HALF_TREND";
@@ -114,6 +115,9 @@ export function calculateHalfTrend(input: IndicatorInput): IndicatorResult {
       zone,
       signal,
       color: zone,
+      opinion: trend === "UP"
+        ? opinion("BUY", "NORMAL", "HalfTrend trend is UP / green")
+        : opinion("SELL", "NORMAL", "HalfTrend trend is DOWN / red"),
       values: {
         HalfTrend: formatValue(halfTrendLine),
         Trend: trend,

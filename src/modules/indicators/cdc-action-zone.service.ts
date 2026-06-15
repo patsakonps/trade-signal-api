@@ -1,5 +1,6 @@
 import { ema, ohlc4 } from "./ema";
-import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
+import { neutralOpinion, opinion } from "./opinion";
+import type { IndicatorInput, IndicatorResult, SignalName, ZoneName, NormalizedOpinion } from "./types";
 
 export const CDC_ACTION_ZONE_KEY = "CDC_ACTION_ZONE";
 
@@ -26,6 +27,12 @@ function resolveZone(bullish: boolean, bearish: boolean, ap: number, fast: numbe
   if (yellow) return "YELLOW";
   if (blue) return "BLUE";
   return "WHITE";
+}
+
+function resolveOpinion(zone: ZoneName): NormalizedOpinion {
+  if (zone === "GREEN") return opinion("BUY", "NORMAL", "CDC Action Zone is green: bullish fast/slow structure with price above fast EMA");
+  if (zone === "RED") return opinion("SELL", "NORMAL", "CDC Action Zone is red: bearish fast/slow structure with price below fast EMA");
+  return neutralOpinion(`CDC Action Zone is ${zone}: transition or mixed zone, not a clean buy/sell opinion`);
 }
 
 export function calculateCdcActionZone(input: IndicatorInput): IndicatorResult {
@@ -63,6 +70,7 @@ export function calculateCdcActionZone(input: IndicatorInput): IndicatorResult {
       zone,
       signal,
       color: zone,
+      opinion: resolveOpinion(zone),
       values: {
         AP: ap[index],
         Fast: fast[index],

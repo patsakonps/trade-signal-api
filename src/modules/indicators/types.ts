@@ -2,6 +2,14 @@ import type { Candle } from "../market/market.types";
 
 export type SignalName = "BUY" | "SELL" | "HOLD" | "NONE";
 export type ZoneName = "GREEN" | "RED" | "YELLOW" | "BLUE" | "WHITE";
+export type NormalizedSignal = "BUY" | "SELL" | "NEUTRAL";
+export type NormalizedStrength = "WEAK" | "NORMAL" | "STRONG";
+
+export type NormalizedOpinion = {
+  signal: NormalizedSignal;
+  strength: NormalizedStrength;
+  reason: string;
+};
 
 export type IndicatorSeriesPoint = {
   time: number;
@@ -10,6 +18,7 @@ export type IndicatorSeriesPoint = {
   zone?: ZoneName;
   signal?: SignalName;
   color?: ZoneName;
+  opinion?: NormalizedOpinion;
   values: Record<string, number | string | boolean | null>;
 };
 

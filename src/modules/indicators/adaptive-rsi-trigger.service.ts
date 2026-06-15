@@ -1,6 +1,7 @@
 import { close, ema, ohlc4 } from "./ema";
 import type { Candle } from "../market/market.types";
-import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
+import { neutralOpinion, opinion } from "./opinion";
+import type { IndicatorInput, IndicatorResult, SignalName, ZoneName, NormalizedOpinion } from "./types";
 
 export const ADAPTIVE_RSI_TRIGGER_KEY = "ADAPTIVE_RSI_TRIGGER";
 
@@ -131,6 +132,13 @@ function resolveState(rsi: number | null, trigger: number | null, overbought: nu
   return rsi >= trigger ? "BULLISH" : "BEARISH";
 }
 
+function resolveOpinion(rsi: number | null, trigger: number | null): NormalizedOpinion {
+  if (rsi === null || trigger === null) return neutralOpinion("Adaptive RSI or trigger is still waiting for enough closed candles");
+  if (rsi > trigger) return opinion("BUY", "NORMAL", `Adaptive RSI ${rsi.toFixed(2)} is above trigger ${trigger.toFixed(2)}`);
+  if (rsi < trigger) return opinion("SELL", "NORMAL", `Adaptive RSI ${rsi.toFixed(2)} is below trigger ${trigger.toFixed(2)}`);
+  return neutralOpinion("Adaptive RSI equals trigger");
+}
+
 function formatValue(value: number | null): number | null {
   if (value === null || !Number.isFinite(value)) return null;
   return Number(value.toFixed(4));
@@ -173,6 +181,7 @@ export function calculateAdaptiveRsiTrigger(input: IndicatorInput): IndicatorRes
       zone,
       signal,
       color: zone,
+      opinion: resolveOpinion(rsi, trigger),
       values: {
         AdaptiveRSI: formatValue(rsi),
         Trigger: formatValue(trigger),

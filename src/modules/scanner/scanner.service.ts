@@ -2,9 +2,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { marketService } from "../market/market.service";
 import { calculateBuiltInIndicator, getBuiltInIndicatorDefinition } from "../indicators/registry";
-import type { IndicatorResult, IndicatorSeriesPoint } from "../indicators/types";
+import type { IndicatorResult, IndicatorSeriesPoint, NormalizedSignal } from "../indicators/types";
 import type { Candle } from "../market/market.types";
 import { telegramService } from "../notifications/telegram.service";
+import { isCompositeAllRule, readCompositeRuleComponents } from "../signal-rules/composite-rule";
 
 const DEFAULT_SCAN_LIMIT = 240;
 const zoneConditions = new Set(["GREEN", "RED", "YELLOW", "BLUE", "WHITE"]);
@@ -24,6 +25,8 @@ type ScanRuleResult = {
   price?: number;
 };
 
+class ScannerSkipError extends Error {}
+
 type ScanSummary = {
   scannedAt: string;
   durationMs: number;
@@ -33,6 +36,35 @@ type ScanSummary = {
   skipped: number;
   errors: number;
   results: ScanRuleResult[];
+};
+
+
+type RuleForScan = {
+  id: string;
+  name: string;
+  workspaceId: string;
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  indicatorKey: string;
+  condition: string;
+  paramsJson: Prisma.JsonValue;
+};
+
+type PreparedSignal = {
+  result: IndicatorResult;
+  signalType: string;
+  candleCloseTime: Date;
+  payloadJson: Prisma.InputJsonValue;
+};
+
+type CompositeComponentSummary = {
+  indicatorKey: string;
+  signal: NormalizedSignal;
+  strength: string;
+  reason: string;
+  eventSignal?: string;
+  zone?: string;
 };
 
 function getClosedCandles(candles: Candle[]): Candle[] {
@@ -81,7 +113,7 @@ function getSignalType(result: IndicatorResult, condition: string): string {
   return "SIGNAL";
 }
 
-function paramsToRecord(value: Prisma.JsonValue): Record<string, unknown> {
+function paramsToRecord(value: Prisma.JsonValue | unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
@@ -99,6 +131,83 @@ function logScannerEvent(level: "info" | "warn" | "error", message: string, meta
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.info(line);
+}
+
+function getAllowedCompositeDirections(condition: string): Array<"BUY" | "SELL"> {
+  const normalized = normalizeCondition(condition);
+  if (normalized === "BUY") return ["BUY"];
+  if (normalized === "SELL") return ["SELL"];
+  return ["BUY", "SELL"];
+}
+
+function getOpinionAt(result: IndicatorResult, index: number): NormalizedSignal {
+  return result.series[index]?.opinion?.signal ?? "NEUTRAL";
+}
+
+function allComponentsAgree(results: IndicatorResult[], index: number, direction: "BUY" | "SELL"): boolean {
+  if (index < 0) return false;
+  return results.every((result) => getOpinionAt(result, index) === direction);
+}
+
+function summarizeComponents(results: IndicatorResult[], index: number): CompositeComponentSummary[] {
+  return results.map((result) => {
+    const point = result.series[index] ?? result.latest;
+    return {
+      indicatorKey: result.indicatorKey,
+      signal: point.opinion?.signal ?? "NEUTRAL",
+      strength: point.opinion?.strength ?? "WEAK",
+      reason: point.opinion?.reason ?? "No normalized opinion",
+      eventSignal: point.signal,
+      zone: point.zone
+    };
+  });
+}
+
+function buildCompositeResult(input: {
+  symbol: string;
+  timeframe: string;
+  candle: Candle;
+  signalType: "BUY" | "SELL";
+  componentResults: IndicatorResult[];
+  componentSummaries: CompositeComponentSummary[];
+}): IndicatorResult {
+  const { symbol, timeframe, candle, signalType, componentResults, componentSummaries } = input;
+  const zone = signalType === "BUY" ? "GREEN" : "RED";
+  const reason = `Composite ALL confirmed ${signalType}: ${componentSummaries.map((item) => item.indicatorKey).join(", ")}`;
+  const latest: IndicatorSeriesPoint = {
+    time: candle.openTime,
+    closeTime: candle.closeTime,
+    price: candle.close,
+    zone,
+    signal: signalType,
+    color: zone,
+    opinion: {
+      signal: signalType,
+      strength: "STRONG",
+      reason
+    },
+    values: {
+      Logic: "ALL",
+      Direction: signalType,
+      Components: componentResults.length,
+      Opinions: componentSummaries.map((item) => `${item.indicatorKey}:${item.signal}`).join(" | ")
+    }
+  };
+
+  return {
+    indicatorKey: "COMPOSITE_ALL",
+    symbol,
+    timeframe,
+    latest,
+    series: [latest],
+    alerts: [
+      {
+        name: `${signalType} Signal`,
+        triggered: true,
+        message: reason
+      }
+    ]
+  };
 }
 
 export class ScannerService {
@@ -157,47 +266,11 @@ export class ScannerService {
           continue;
         }
 
-        const indicatorDefinition = getBuiltInIndicatorDefinition(rule.indicatorKey);
-        if (!indicatorDefinition) {
-          summary.skipped += 1;
-          summary.results.push({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            workspaceId: rule.workspaceId,
-            symbol: rule.symbol,
-            timeframe: rule.timeframe,
-            status: "SKIPPED",
-            message: `Unsupported built-in indicator: ${rule.indicatorKey}`
-          });
-          continue;
-        }
+        const prepared = isCompositeAllRule(rule.indicatorKey)
+          ? await this.prepareCompositeAllSignal(rule)
+          : await this.prepareSingleIndicatorSignal(rule);
 
-        const candles = getClosedCandles(await marketService.getCandles(rule.symbol, rule.timeframe, DEFAULT_SCAN_LIMIT));
-        if (candles.length < indicatorDefinition.minCandles) {
-          summary.skipped += 1;
-          summary.results.push({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            workspaceId: rule.workspaceId,
-            symbol: rule.symbol,
-            timeframe: rule.timeframe,
-            status: "SKIPPED",
-            message: `Not enough closed candles to calculate ${rule.indicatorKey}. Required ${indicatorDefinition.minCandles}, got ${candles.length}`
-          });
-          continue;
-        }
-
-        const result = calculateBuiltInIndicator(rule.indicatorKey, {
-          symbol: rule.symbol,
-          timeframe: rule.timeframe,
-          candles,
-          params: paramsToRecord(rule.paramsJson)
-        });
-
-        const latestCandle = candles[candles.length - 1];
-        const candleCloseTime = new Date(latestCandle.closeTime);
-
-        if (!matchesCondition(result, rule.condition)) {
+        if (!prepared) {
           summary.results.push({
             ruleId: rule.id,
             ruleName: rule.name,
@@ -205,16 +278,14 @@ export class ScannerService {
             symbol: rule.symbol,
             timeframe: rule.timeframe,
             status: "NO_SIGNAL",
-            signalType: result.latest.signal,
-            zone: result.latest.zone,
-            candleCloseTime: candleCloseTime.toISOString(),
-            price: result.latest.price,
-            message: `No matching signal for condition ${rule.condition}`
+            message: isCompositeAllRule(rule.indicatorKey)
+              ? `Composite ALL is not newly aligned for condition ${rule.condition}`
+              : `No matching signal for condition ${rule.condition}`
           });
           continue;
         }
 
-        const signalType = getSignalType(result, rule.condition);
+        const { result, signalType, candleCloseTime, payloadJson } = prepared;
 
         const existingSignal = await prisma.signal.findFirst({
           where: {
@@ -254,11 +325,7 @@ export class ScannerService {
             zone: result.latest.zone,
             price: new Prisma.Decimal(result.latest.price),
             candleCloseTime,
-            payloadJson: {
-              condition: rule.condition,
-              latest: result.latest,
-              alerts: result.alerts
-            }
+            payloadJson
           }
         });
 
@@ -336,6 +403,20 @@ export class ScannerService {
           message
         });
       } catch (error) {
+        if (error instanceof ScannerSkipError) {
+          summary.skipped += 1;
+          summary.results.push({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            workspaceId: rule.workspaceId,
+            symbol: rule.symbol,
+            timeframe: rule.timeframe,
+            status: "SKIPPED",
+            message: error.message
+          });
+          continue;
+        }
+
         summary.errors += 1;
         logScannerEvent("error", "rule_scan_failed", {
           ruleId: rule.id,
@@ -368,6 +449,111 @@ export class ScannerService {
     });
 
     return summary;
+  }
+
+  private async prepareSingleIndicatorSignal(rule: RuleForScan): Promise<PreparedSignal | null> {
+    const indicatorDefinition = getBuiltInIndicatorDefinition(rule.indicatorKey);
+    if (!indicatorDefinition) {
+      throw new ScannerSkipError(`Unsupported built-in indicator: ${rule.indicatorKey}`);
+    }
+
+    const candles = getClosedCandles(await marketService.getCandles(rule.symbol, rule.timeframe, DEFAULT_SCAN_LIMIT));
+    if (candles.length < indicatorDefinition.minCandles) {
+      throw new ScannerSkipError(`Not enough closed candles to calculate ${rule.indicatorKey}. Required ${indicatorDefinition.minCandles}, got ${candles.length}`);
+    }
+
+    const result = calculateBuiltInIndicator(rule.indicatorKey, {
+      symbol: rule.symbol,
+      timeframe: rule.timeframe,
+      candles,
+      params: paramsToRecord(rule.paramsJson)
+    });
+
+    const latestCandle = candles[candles.length - 1];
+    const candleCloseTime = new Date(latestCandle.closeTime);
+
+    if (!matchesCondition(result, rule.condition)) {
+      return null;
+    }
+
+    const signalType = getSignalType(result, rule.condition);
+
+    return {
+      result,
+      signalType,
+      candleCloseTime,
+      payloadJson: {
+        condition: rule.condition,
+        latest: result.latest,
+        alerts: result.alerts
+      } as Prisma.InputJsonValue
+    };
+  }
+
+  private async prepareCompositeAllSignal(rule: RuleForScan): Promise<PreparedSignal | null> {
+    const components = readCompositeRuleComponents(paramsToRecord(rule.paramsJson));
+    if (components.length < 2) throw new ScannerSkipError("Composite ALL needs at least 2 indicators");
+    if (components.length > 6) throw new ScannerSkipError("Composite ALL supports up to 6 indicators");
+
+    const definitions = components.map((component) => {
+      const definition = getBuiltInIndicatorDefinition(component.indicatorKey);
+      if (!definition) throw new ScannerSkipError(`Unsupported composite component: ${component.indicatorKey}`);
+      return definition;
+    });
+
+    const minCandles = Math.max(...definitions.map((definition) => definition.minCandles));
+    const candles = getClosedCandles(await marketService.getCandles(rule.symbol, rule.timeframe, DEFAULT_SCAN_LIMIT));
+    if (candles.length < minCandles) {
+      throw new ScannerSkipError(`Not enough closed candles for Composite ALL. Required ${minCandles}, got ${candles.length}`);
+    }
+
+    const componentResults = components.map((component) =>
+      calculateBuiltInIndicator(component.indicatorKey, {
+        symbol: rule.symbol,
+        timeframe: rule.timeframe,
+        candles,
+        params: component.paramsJson ?? {}
+      })
+    );
+
+    const latestIndex = candles.length - 1;
+    const previousIndex = latestIndex - 1;
+    const directions = getAllowedCompositeDirections(rule.condition);
+    const currentDirection = directions.find((direction) => allComponentsAgree(componentResults, latestIndex, direction));
+
+    if (!currentDirection) {
+      return null;
+    }
+
+    if (allComponentsAgree(componentResults, previousIndex, currentDirection)) {
+      return null;
+    }
+
+    const latestCandle = candles[latestIndex];
+    const candleCloseTime = new Date(latestCandle.closeTime);
+    const componentSummaries = summarizeComponents(componentResults, latestIndex);
+    const previousComponentSummaries = summarizeComponents(componentResults, previousIndex);
+    const result = buildCompositeResult({
+      symbol: rule.symbol,
+      timeframe: rule.timeframe,
+      candle: latestCandle,
+      signalType: currentDirection,
+      componentResults,
+      componentSummaries
+    });
+
+    return {
+      result,
+      signalType: currentDirection,
+      candleCloseTime,
+      payloadJson: {
+        condition: rule.condition,
+        logic: "ALL",
+        latest: result.latest,
+        components: componentSummaries,
+        previousComponents: previousComponentSummaries
+      } as Prisma.InputJsonValue
+    };
   }
 }
 

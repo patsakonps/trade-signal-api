@@ -1,4 +1,5 @@
-import type { IndicatorInput, IndicatorResult, SignalName, ZoneName } from "./types";
+import { neutralOpinion, opinion } from "./opinion";
+import type { IndicatorInput, IndicatorResult, SignalName, ZoneName, NormalizedOpinion } from "./types";
 
 export const BILL_WILLIAMS_MFI_KEY = "BILL_WILLIAMS_MFI";
 
@@ -36,6 +37,13 @@ function resolveState(mfi: number | null, previousMfi: number | null, volume: nu
   if (!mfiUp && !volumeUp) return "FADE";
   if (mfiUp && !volumeUp) return "FAKE";
   return "SQUAT";
+}
+
+function resolveOpinion(buy: boolean, sell: boolean, state: BwMfiState): NormalizedOpinion {
+  if (buy) return opinion("BUY", "STRONG", "Price broke above the previous Squat candle high");
+  if (sell) return opinion("SELL", "STRONG", "Price broke below the previous Squat candle low");
+  if (state === "SQUAT") return neutralOpinion("Squat detected: volume increased while facilitation decreased, wait for breakout direction");
+  return neutralOpinion(`Bill Williams MFI state is ${state}; no Squat breakout yet`);
 }
 
 export function calculateBillWilliamsMfi(input: IndicatorInput): IndicatorResult {
@@ -87,6 +95,7 @@ export function calculateBillWilliamsMfi(input: IndicatorInput): IndicatorResult
       zone,
       signal,
       color: zone,
+      opinion: resolveOpinion(buy, sell, state),
       values: {
         BWMFI: formatValue(mfiValues[index], 10),
         State: state,
