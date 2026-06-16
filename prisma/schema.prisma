@@ -29,6 +29,7 @@ model Workspace {
   holdings             Holding[]
   importJobs           ImportJob[]
   telegramNotification TelegramNotificationSetting?
+  backtestRuns         BacktestRun[]
 }
 
 model WatchlistItem {
@@ -83,6 +84,7 @@ model SignalRule {
   updatedAt             DateTime           @updatedAt
 
   signals               Signal[]
+  backtestRuns          BacktestRun[]
 
   @@index([workspaceId])
   @@index([workspaceId, symbol, timeframe])
@@ -165,4 +167,58 @@ model ImportJob {
   createdAt   DateTime  @default(now())
 
   @@index([workspaceId])
+}
+
+
+model BacktestRun {
+  id              String          @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ruleId          String
+  rule            SignalRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  exchange        String          @default("BINANCE")
+  symbol          String
+  timeframe       String
+
+  initialCapital  Float
+  finalCapital    Float
+  netProfitPct    Float
+  winrate         Float
+  maxDrawdownPct  Float
+  profitFactor    Float
+  totalTrades     Int
+  winningTrades   Int             @default(0)
+  losingTrades    Int             @default(0)
+  avgWinPct       Float           @default(0)
+  avgLossPct      Float           @default(0)
+  expectancyPct   Float           @default(0)
+  score           Float           @default(0)
+  configJson      Json            @default("{}")
+  createdAt       DateTime        @default(now())
+
+  trades          BacktestTrade[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, ruleId])
+  @@index([workspaceId, score])
+}
+
+model BacktestTrade {
+  id              String       @id @default(cuid())
+  backtestRunId   String
+  run             BacktestRun  @relation(fields: [backtestRunId], references: [id], onDelete: Cascade)
+  side            String
+  entryTime       DateTime
+  entryPrice      Float
+  exitTime        DateTime
+  exitPrice       Float
+  quantity        Float
+  entryFee        Float        @default(0)
+  exitFee         Float        @default(0)
+  pnl             Float
+  pnlPct          Float
+  reason          String
+  createdAt       DateTime     @default(now())
+
+  @@index([backtestRunId])
 }
