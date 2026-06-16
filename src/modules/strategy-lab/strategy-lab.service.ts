@@ -364,10 +364,10 @@ function simulateTrades(candles: Candle[], signals: StrategySignal[], config: Ba
 export class StrategyLabService {
   async listRuns(workspaceId: string, limit = DEFAULT_RUN_LIMIT) {
     const safeLimit = Math.min(Math.max(Number(limit) || DEFAULT_RUN_LIMIT, 1), 100);
-    const runs = await prisma.backtestRun.findMany({
+    const recentRuns = await prisma.backtestRun.findMany({
       where: { workspaceId },
-      orderBy: [{ score: "desc" }, { createdAt: "desc" }],
-      take: safeLimit,
+      orderBy: { createdAt: "desc" },
+      take: Math.max(safeLimit * 5, 100),
       include: {
         rule: {
           select: {
@@ -382,6 +382,15 @@ export class StrategyLabService {
         }
       }
     });
+
+    const latestByRule = new Map<string, (typeof recentRuns)[number]>();
+    for (const run of recentRuns) {
+      if (!latestByRule.has(run.ruleId)) latestByRule.set(run.ruleId, run);
+    }
+
+    const runs = Array.from(latestByRule.values())
+      .sort((left, right) => right.score - left.score || right.netProfitPct - left.netProfitPct)
+      .slice(0, safeLimit);
 
     return { runs };
   }
